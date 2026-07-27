@@ -1,0 +1,12 @@
+{
+  "T": 5,
+  "I0": 5000000,
+  "V0": 100,
+  "g_v": 30,
+  "p_unit": 15000,
+  "c_variable": 8000,
+  "c_fixed": 1200000,
+  "tax_rate_profit": 20,
+  "discount_rate": 15,
+  "working_capital_pct": 12
+}

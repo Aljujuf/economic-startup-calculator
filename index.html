@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Оценка окупаемости стартапа</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+  <main class="container">
+    <header class="topbar">
+      <div>
+        <h1>Окупаемость технологического стартапа</h1>
+        <p class="subtitle">
+          Калькулятор NPV / IRR / PI / PP с тремя сценариями: базовый, оптимистичный, пессимистичный
+        </p>
+      </div>
+      <button id="themeToggle" class="ghost-btn" type="button" aria-label="Переключить тему">Сменить тему</button>
+    </header>
+
+    <section class="intro-box">
+      <p>
+        <strong>Что делает система.</strong> Вы задаёте стартовые деньги, клиентов и чек, зарплаты, аренду, налоговый
+        режим и
+        горизонт планирования. Сервер строит помесячный денежный поток, сворачивает его в годы и считает показатели по
+        каждому
+        сценарию.
+      </p>
+      <details class="scenario-details">
+        <summary>Сценарии (нажмите, чтобы развернуть)</summary>
+        <ul>
+          <li>
+            <strong>Базовый</strong> — ваши вводные без корректировок: «как запланировали».
+          </li>
+          <li>
+            <strong>Оптимистичный</strong> — чуть быстрее растут клиенты, ниже расход на клиента, ставка дисконтирования
+            чуть
+            ниже (будущие деньги «весомее»).
+          </li>
+          <li>
+            <strong>Пессимистичный</strong> — рост клиентов ниже, расход на клиента выше, стартовая база клиентов
+            меньше,
+            дисконт выше (будущее «дешевле»).
+          </li>
+        </ul>
+      </details>
+    </section>
+
+    <section class="scenario-section">
+      <h2>Активный сценарий</h2>
+      <div id="scenarioButtons" class="scenario-buttons"></div>
+    </section>
+
+    <section class="input-section">
+      <h2>Входные данные</h2>
+      <p id="apiError" class="api-error" role="alert" hidden></p>
+      <form id="analysisForm" class="input-form" novalidate>
+        <fieldset class="fieldset">
+          <legend>Общее</legend>
+          <div class="input-grid">
+            <label class="field">
+              <span title="Как назвать проект в отчёте">Название проекта</span>
+              <input id="project_name" name="project_name" type="text" required />
+              <small class="error-text"></small>
+            </label>
+            <label class="field">
+              <span title="На сколько лет вперёд моделируем деньги">Горизонт планирования, лет</span>
+              <input id="planning_years" name="planning_years" type="number" min="1" step="1" required />
+              <small class="error-text"></small>
+            </label>
+            <label class="field">
+              <span
+                title="Всё, что вкладываете до выхода на окупаемость: оборудование, разработка, запас денег">Стартовый
+                капитал, ₽</span>
+              <input id="startup_capital" name="startup_capital" type="number" min="0" step="0.01" required />
+              <small class="error-text"></small>
+            </label>
+            <label class="field">
+              <span
+                title="Оценка «риска» инвестиции в % годовых: чем выше, тем сильнее дисконтируются будущие деньги">Ставка
+                дисконтирования, % в год</span>
+              <input id="discount_rate" name="discount_rate" type="number" min="0" step="0.01" required />
+              <small class="error-text"></small>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend>Тип бизнеса и источник денег</legend>
+          <div class="input-grid">
+            <label class="field">
+              <span title="Влияет на коэффициент переменных затрат (условная «сложность» отрасли)">Сфера / модель</span>
+              <select id="business_type" name="business_type" required>
+                <option value="services">Услуги (консалтинг, агентство и т.п.)</option>
+                <option value="software">Разработка ПО (проекты, лицензии)</option>
+                <option value="saas">SaaS / подписка</option>
+                <option value="online_store">Интернет‑магазин</option>
+              </select>
+            </label>
+            <label class="field">
+              <span title="Откуда основной доход — для упрощённого коэффициента выручки">Откуда основной доход</span>
+              <select id="income_source" name="income_source" required>
+                <option value="services">Услуги (разовые оплаты)</option>
+                <option value="subscription">Подписка / регулярные платежи</option>
+                <option value="software_sales">Продажа софта (коробка, лицензия)</option>
+              </select>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend>Налоги (упрощённо)</legend>
+          <div class="input-grid">
+            <label class="field">
+              <span title="ОСНО — налог на прибыль; УСН — «упрощёнка»; патент — фикс за год, делим на месяцы">Режим
+                налогообложения</span>
+              <select id="tax_mode" name="tax_mode" required>
+                <option value="USN">УСН (упрощёнка)</option>
+                <option value="OSNO">ОСНО (общая система)</option>
+                <option value="PATENT">Патент (ПСН)</option>
+              </select>
+            </label>
+            <label class="field">
+              <span title="Только для УСН: 6% с оборота или 15% с разницы «доход минус расход»">Вариант УСН</span>
+              <select id="tax_system" name="tax_system" required>
+                <option value="USN_Income">6% с дохода</option>
+                <option value="USN_Income_Minus_Expenses">15% с прибыли (доход минус расход)</option>
+              </select>
+            </label>
+            <label class="field">
+              <span title="Ставка «доход минус расход» — можно поставить региональную (например 5–15%)">Ставка УСН
+                «доходы минус расходы», %</span>
+              <input id="tax_rate_usn_dr" name="tax_rate_usn_dr" type="number" min="0" max="100" step="0.01"
+                value="15" />
+              <small class="error-text"></small>
+            </label>
+            <label class="field checkbox-field">
+              <span
+                title="Для ОСНО в модели добавлен очень грубый «надбавочный» блок под НДС — не замена бухгалтерии">Учитывать
+                НДС (грубо, только ОСНО)</span>
+              <input id="has_vat" name="has_vat" type="checkbox" />
+            </label>
+            <label class="field">
+              <span title="Годовая сумма патента, в модели делится на 12 месяцев">Стоимость патента в год, ₽</span>
+              <input id="patent_cost" name="patent_cost" type="number" min="0" step="0.01" value="0" />
+              <small class="error-text"></small>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend>Клиенты и выручка</legend>
+          <div class="input-grid">
+            <label class="field">
+              <span title="Сколько платящих клиентов в первый месяц после старта">Клиентов в первый месяц</span>
+              <input id="monthly_customers_start" name="monthly_customers_start" type="number" min="0" step="1"
+                required />
+              <small class="error-text"></small>
+            </label>
+            <label class="field">
+              <span title="Процент роста числа клиентов каждый месяц к предыдущему (сложный процент)">Рост клиентов в
+                месяц, %</span>
+              <input id="customers_growth_monthly" name="customers_growth_monthly" type="number" step="0.01" required />
+              <small class="error-text"></small>
+            </label>
+            <label class="field">
+              <span title="Средняя выручка с одного клиента в месяц">Средний чек в месяц на клиента, ₽</span>
+              <input id="average_check" name="average_check" type="number" min="0" step="0.01" required />
+              <small class="error-text"></small>
+            </label>
+            <label class="field">
+              <span title="Прочий стабильный доход в месяц: партнёрки, аренда оборудования и т.д.">Доп. доход в месяц,
+                ₽</span>
+              <input id="additional_income_monthly" name="additional_income_monthly" type="number" min="0" step="0.01"
+                value="0" />
+              <small class="error-text"></small>
+            </label>
+            <label class="field">
+              <span title="Переменные затраты на одного клиента в месяц: поддержка, хостинг на юзера и т.п.">Расходы на
+                одного клиента в месяц, ₽</span>
+              <input id="cost_per_client_monthly" name="cost_per_client_monthly" type="number" min="0" step="0.01"
+                required />
+              <small class="error-text"></small>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend>Команда и взносы</legend>
+          <div class="input-grid">
+            <label class="field">
+              <span title="Штат в оценке: одна средняя зарплата на всех">Число сотрудников</span>
+              <input id="employees_count" name="employees_count" type="number" min="0" step="1" required />
+              <small class="error-text"></small>
+            </label>
+            <label class="field">
+              <span
+                title="Усреднённая зарплата на человека в месяц «на руки» или до налога — в модели как единый фонд">Средняя
+                зарплата в месяц, ₽</span>
+              <input id="avg_salary" name="avg_salary" type="number" min="0" step="0.01" required />
+              <small class="error-text"></small>
+            </label>
+            <label class="field checkbox-field">
+              <span title="Льготные категории со сниженными страховыми взносами (упрощённо)">Есть льготные сотрудники
+                (инвалидность и т.п.)</span>
+              <input id="has_benefit_employees" name="has_benefit_employees" type="checkbox" />
+            </label>
+            <label class="field">
+              <span title="Сколько человек из штата учитываются по льготной ставке взносов">Сколько льготных
+                сотрудников</span>
+              <input id="benefit_employees_count" name="benefit_employees_count" type="number" min="0" step="1"
+                value="0" />
+              <small class="error-text"></small>
+            </label>
+            <label class="field">
+              <span title="Страховые взносы для льготных, % от их зарплаты">Взносы для льготных, %</span>
+              <input id="insurance_benefit_rate" name="insurance_benefit_rate" type="number" min="0" step="0.01"
+                value="15" />
+              <small class="error-text"></small>
+            </label>
+            <label class="field">
+              <span title="Страховые взносы для остальных, % от зарплаты (усреднённо)">Взносы обычные, %</span>
+              <input id="insurance_rate_standard" name="insurance_rate_standard" type="number" min="0" step="0.01"
+                value="30" />
+              <small class="error-text"></small>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend>Офис, маркетинг, прочее</legend>
+          <div class="input-grid">
+            <label class="field">
+              <span title="Аренда помещения в месяц">Аренда в месяц, ₽</span>
+              <input id="rent_monthly" name="rent_monthly" type="number" min="0" step="0.01" required />
+              <small class="error-text"></small>
+            </label>
+            <label class="field">
+              <span title="Коммуналка, связь в офисе">Коммунальные и связь в месяц, ₽</span>
+              <input id="utilities_monthly" name="utilities_monthly" type="number" min="0" step="0.01" value="0" />
+              <small class="error-text"></small>
+            </label>
+            <label class="field">
+              <span title="Канцелярия, хостинг общий, софт для офиса">Офисные расходы в месяц, ₽</span>
+              <input id="office_expenses_monthly" name="office_expenses_monthly" type="number" min="0" step="0.01"
+                value="0" />
+              <small class="error-text"></small>
+            </label>
+            <label class="field">
+              <span title="Реклама, PR, контент">Маркетинг в месяц, ₽</span>
+              <input id="marketing_budget_monthly" name="marketing_budget_monthly" type="number" min="0" step="0.01"
+                value="0" />
+              <small class="error-text"></small>
+            </label>
+            <label class="field">
+              <span title="Банк, бухгалтер на аутсорсе, прочие фиксированные статьи">Прочие постоянные расходы в месяц,
+                ₽</span>
+              <input id="other_fixed_expenses_monthly" name="other_fixed_expenses_monthly" type="number" min="0"
+                step="0.01" value="0" />
+              <small class="error-text"></small>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="actions-row">
+          <button id="calculateBtn" class="primary-btn" type="submit">Рассчитать на сервере</button>
+        </div>
+      </form>
+
+      <div class="upload-block">
+        <label for="fileInput" class="upload-label">Загрузить JSON с полями как в форме</label>
+        <input id="fileInput" type="file" accept=".json" />
+        <p id="uploadStatus" class="upload-status"></p>
+      </div>
+    </section>
+
+    <section class="metrics-grid" id="metricsGrid">
+      <article class="metric-card">
+        <span class="metric-name"
+          title="NPV (чистый приведённый доход): сумма всех денежных притоков и оттоков, пересчитанных на «сегодня» по ставке дисконтирования. Если больше нуля — проект в целом окупается с учётом времени.">NPV</span>
+        <strong id="npvValue" class="metric-value">-</strong>
+      </article>
+      <article class="metric-card">
+        <span class="metric-name"
+          title="IRR (внутренняя норма доходности): такая ставка дисконтирования, при которой NPV = 0. Проще: «среднегодовая доходность проекта», если поток «обычный». Сравнивайте с вашей ставкой дисконтирования.">IRR</span>
+        <strong id="irrValue" class="metric-value">-</strong>
+      </article>
+      <article class="metric-card">
+        <span class="metric-name"
+          title="PI (индекс рентабельности инвестиций): отношение приведённой ценности будущих денег к вложениям. PI &gt; 1 значит, что на каждый вложенный рубль вы получаете больше рубля приведённой выгоды.">PI</span>
+        <strong id="piValue" class="metric-value">-</strong>
+      </article>
+      <article class="metric-card">
+        <span class="metric-name"
+          title="PP (простой срок окупаемости): через сколько лет непрерывных годовых потоков накопленный нетто‑денежный поток станет неотрицательным. Не учитывает разную «ценность» лет — только сырые суммы.">PP</span>
+        <strong id="ppValue" class="metric-value">-</strong>
+      </article>
+    </section>
+
+    <section class="charts-grid">
+      <article class="chart-card">
+        <h3>Годовой денежный поток</h3>
+        <p class="chart-hint" title="Первый столбец — стартовый отток, далее сумма чистых денег за каждый год модели.">
+          Столбцы: год 0 — вложение; далее — чистый денежный поток за год (доходы минус расходы и налоги, как в
+          методике).
+        </p>
+        <canvas id="cashflowChart"></canvas>
+      </article>
+      <article class="chart-card">
+        <h3>Сравнение сценариев (радар)</h3>
+        <p class="chart-hint"
+          title="Каждая ось нормализована отдельно: 1 — лучший сценарий по этой оси среди трёх, 0 — худший.">
+          Оси не в рублях: для каждого показателя берётся лучший и худший сценарий, остальные масштабируются между 0 и
+          1. Так
+          можно сравнить форму «профиля» сценариев, а не абсолютные величины.
+        </p>
+        <canvas id="comparisonChart"></canvas>
+      </article>
+    </section>
+  </main>
+
+  <script src="./script.js"></script>
+</body>
+
+</html>
